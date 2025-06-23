@@ -1,0 +1,43 @@
+import std;
+import strings;
+import list;
+import "result.hob" as result;
+
+use std.slice.Slice;
+use list.List;
+use strings.String;
+
+extern fun execv(pathname: *u8, args: **u8) -> i32;
+
+public fun execute(file: string, args: Slice.<string>) -> result.Result.<std.None> {
+    var pathname = strings.fromString(file);
+    defer pathname.free();
+
+    var allocArgs = list.newWithCapacity.<String>(args.length);
+    defer { 
+        var i: usize = 0;
+        while i < allocArgs.length() {
+            allocArgs.at(i).free();
+            i += 1;
+        }
+        allocArgs.free();
+    }
+    var i: usize = 0;
+    while i < args.length {
+        allocArgs.push(strings.fromString(args.at(i)));
+        i += 1;
+    }
+    
+    var rawArgs = list.newWithCapacity.<*u8>(args.length + 2);
+    defer rawArgs.free();
+
+    rawArgs.push(pathname.makeCString());
+    i = 0;
+    while i < allocArgs.length() {
+        rawArgs.push(allocArgs.atRef(i).makeCString());
+        i += 1;
+    }
+    rawArgs.push(std.null.<u8>());
+
+    return result.newMapped.<std.None>(execv(pathname.data.raw, rawArgs.data.raw), result.toNone);
+}

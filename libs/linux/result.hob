@@ -1,0 +1,23 @@
+import result;
+import std;
+
+public type Errno = i32;
+public type Result<T> = result.Result.<T, Errno>;
+
+public fun new(value: i32) -> Result.<i32> {
+    if value < 0 {
+        return result.err.<i32, Errno>(0);
+    }
+    return result.ok.<i32, Errno>(value);
+}
+
+public fun toNone(value: i32) -> std.None {
+    return std.none();
+}
+
+public fun newMapped<T>(value: i32, mapper: fun (i32) -> T) -> Result.<T> {
+    if value < 0 {
+        return result.err.<T, Errno>(0);
+    }
+    return result.ok.<T, Errno>(mapper(value));
+}

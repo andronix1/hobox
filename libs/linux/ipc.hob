@@ -1,0 +1,29 @@
+import io;
+import std;
+import result as stdResult;
+import "result.hob" as result;
+
+public type Socket = io.Fd;
+
+type Domain = i32;
+type Type = i32;
+type Protocol = i32;
+
+const AF_UNIX: Domain = 1;
+const AF_INET: Domain = 2;
+const SOCK_STREAM: Type = 1;
+const PROTO_DEFAULT: Protocol = 0;
+
+extern fun socketpair(domain: Domain, sockType: Type, protocol: Protocol, output: *[2]Socket) -> i32;
+
+public fun createSocketPair() -> result.Result.<[2]Socket> {
+    var output: [2]Socket;
+    return stdResult.mapDirect.<std.None, [2]Socket, result.Errno>(
+        result.newMapped.<std.None>(socketpair(AF_UNIX, SOCK_STREAM, PROTO_DEFAULT, &output), result.toNone),
+        output,
+    );
+}
+
+public fun Socket.readTo(self, output: std.slice.Slice.<u8>) -> result.Result.<std.None> {
+    return result.newMapped.<std.None>(self.read(output.raw, output.length), result.toNone);
+}

@@ -1,0 +1,64 @@
+import io;
+import os;
+import std;
+import process;
+import linux;
+
+use linux.ipc.Socket;
+use linux.clone;
+use std.slice.Slice;
+
+type ThreadData = struct {
+    binary: string,
+    rootfs: string,
+    hostname: string,
+    socket: Socket
+};
+
+const STACK_SIZE: usize = 1024;
+
+fun threadCallback(data: *ThreadData) -> i32 {
+    linux.namespace.changeRoot(data.*.rootfs).unwrap();
+    linux.namespace.changeDir(data.*.rootfs).unwrap();
+    linux.namespace.changeHostname(data.*.hostname).unwrap();
+
+    var c: u8;
+    data.*.socket.readTo(std.slice.new.<u8>(&c, 1)).unwrap();
+    linux.namespace.setUid(0);
+
+    io.out.putString("welcome to shell!\n");
+    linux.exec.execute(data.*.binary, std.slice.newEmpty.<string>()).unwrap();
+    return 0;
+}
+
+global fun main(argc: usize, argv: **u8) -> i32 {
+    return os.main(argc, argv, fun (args: Slice.<string>) -> i32 {
+        std.panic.assert(linux.namespace.getUid() == 0, "program must be runned as root"); 
+
+        var socketPair = linux.ipc.createSocketPair().unwrap();
+        
+        var data = <ThreadData> {
+            binary: "/bin/sh",
+            rootfs: "./rootfs",
+            hostname: "vaibeflow-user",
+            socket: socketPair[0],
+        };
+
+        final flags = linux.clone.flags()
+            .newCGroup().newIpc().newPid()
+            .newUts().newNs().newNet().newUser()
+            .sigChld();
+
+        var stack: [STACK_SIZE]u8 = undefined;
+        final pid = clone.clone.<ThreadData>(threadCallback, &stack[STACK_SIZE] as *void, flags, &data).unwrap();
+
+        io.out.putString("child pid: "); io.out.putInt32(pid); io.out.putString("\n");
+
+        linux.namespace.uidMapOne(pid, 0, 1000).unwrap();
+        socketPair[1].putString("c");
+
+        pid.wait().unwrap();
+        io.out.putString("hello here!\n");
+        return 0;
+    });
+}
