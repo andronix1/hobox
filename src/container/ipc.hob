@@ -1,0 +1,85 @@
+import std;
+import io;
+import result;
+import list;
+
+use list.List;
+use std.slice.Slice;
+use io.socket.Socket;
+use io.socket.SocketPair;
+use result.{ Result, NoneResult };
+
+public type Command = struct {
+    id: u8,
+    callback: fun (Socket) -> NoneResult,
+};
+
+public fun newCommand(id: u8, callback: fun (Socket) -> NoneResult) -> Command {
+    return {
+        id: id,
+        callback: callback,
+    };
+}
+
+public type Receiver = struct {
+    commands: List.<Command>,
+    public socket: Socket,
+    currentCmd: usize
+};
+
+public type Sender = struct {
+    socket: Socket
+};
+
+public type Channel = struct {
+    public sender: Sender,
+    public receiver: Receiver,
+};
+
+public fun newChannel(commands: Slice.<Command>) -> Result.<Channel> {
+    return io.socket.createIpcPair()
+        .mapWith.<List.<Command>, Channel>(
+            list.fromSlice.<Command>(commands),
+            fun (commands, pair) {
+                return {
+                    sender: { socket: pair[0] },
+                    receiver: {
+                        commands: commands,
+                        socket: pair[1],
+                        currentCmd: 0,
+                    },
+                };
+            }
+        );
+}
+
+public fun Channel.free(self) {
+    self.receiver.free();
+}
+
+public fun Sender.free(self) {
+    self.socket.close();
+}
+
+public fun Receiver.free(self) {
+    self.commands.free();
+    self.socket.close();
+}
+
+public fun Receiver.receiveNext(&self) -> NoneResult {
+    std.panic.assert(self.currentCmd < self.commands.length(), "Receiver.receiveNext: all commands already executed");
+    final byteResult = self.socket.readByte();
+    if !byteResult.isOk {
+        return byteResult.convertErr.<std.None>();
+    }
+
+    final currentCommand = self.commands.at(self.currentCmd);
+    self.currentCmd += 1;
+    std.panic.assert(currentCommand.id == byteResult.unwrap(), "Receiver.receiveNext: invalid command order passed");
+
+    return currentCommand.callback(self.socket);
+}
+
+public fun Sender.send(self, command: u8) -> NoneResult {
+    return self.socket.putByte(command);
+}

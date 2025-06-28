@@ -1,0 +1,32 @@
+import os;
+import std;
+import io;
+import process;
+import "container/lib.hob" as container;
+
+global fun main(argc: usize, argv: **u8) -> i32 {
+    return os.main(argc, argv, fun (args) {
+        final handle = container.run.<string>({
+            fs: {
+                rootfs: "./rootfs",
+                workDir: "/root",
+            },
+            user: {
+                hostname: "vaibeflow",
+                uid: 1000,
+            },
+            env: container.config.env().with("PATH", "/bin"),
+        }, "/bin/sh", fun (command) {
+            io.out.putString("welcome to shell!\n");
+            process.run(command, std.slice.empty.<string>()).unwrap();
+            return 0;
+        }).unwrap();
+
+        final status = handle.wait().unwrap();
+        io.out.putString("process finished with status: ");
+        io.out.putInt32(status);
+        io.out.putString("\n");
+
+        return 0;
+    });
+}

@@ -1,0 +1,38 @@
+import list;
+
+use list.List;
+
+public type Fs = struct {
+    public rootfs: string,
+    public workDir: string,
+};
+
+type EnvValue = struct {
+    public name: string,
+    public value: string,
+};
+public type Env = List.<EnvValue>;
+public fun env() -> Env { return list.new.<EnvValue>() as Env; }
+public fun Env.with(self, name: string, value: string) -> Env {
+    var res = self;
+    res.push({
+        name: name,
+        value: value,
+    });
+    return res;
+}
+
+public type User = struct {
+    public hostname: string,
+    public uid: i32,
+};
+
+public type Config = struct {
+    public fs: Fs,
+    public user: User,
+    public env: Env,
+};
+
+public fun Config.free(self) {
+    self.env.free();
+}

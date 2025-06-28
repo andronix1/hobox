@@ -1,0 +1,79 @@
+import std;
+import io;
+import result;
+import env;
+import "ipc.hob" as ipc;
+import "config.hob" as config;
+
+use config.Config;
+use result.{ Result, NoneResult };
+
+public type Internal = struct {
+    config: Config,
+    receiver: ipc.Receiver,
+};
+
+public type External = struct {
+    sender: ipc.Sender,
+};
+
+public type Configurator = struct {
+    public external: External,
+    public internal: Internal,
+};
+
+const CMD_UID_MAPPED: u8 = 0;
+
+public fun create(config: Config) -> Result.<Configurator> {
+    var commands = <ipc.Command> [
+        ipc.newCommand(CMD_UID_MAPPED, fun (callback) {
+            return result.noneOk();
+        }),
+    ];
+    return ipc.newChannel(std.slice.new.<ipc.Command>(&commands[0], commands.length))
+        .mapWith.<Config, Configurator>(
+            config,
+            fun (config, channel) {
+                return {
+                    external: {
+                        sender: channel.sender
+                    },
+                    internal: {
+                        receiver: channel.receiver,
+                        config: config,
+                    },
+                };
+            }
+        );
+}
+
+public fun External.free(&self) {
+    self.sender.free();
+}
+
+public fun Internal.free(&self) {
+    self.receiver.free();
+    self.config.free();
+}
+
+public fun External.setup(&self) -> NoneResult {
+    return self.sender.send(CMD_UID_MAPPED);
+}
+
+public fun Internal.setup(&self) -> NoneResult {
+    env.clear().unwrap();
+
+    for i in std.range(self.config.env.length()) {
+        final value = self.config.env.at(i);
+        env.set(value.name, value.value).unwrap();
+    }
+
+    env.setHostname(self.config.user.hostname).unwrap();
+
+    env.changeRoot(self.config.fs.rootfs).unwrap();
+    env.changeDir(self.config.fs.rootfs).unwrap();
+    env.changeDir(self.config.fs.workDir).unwrap();
+
+    self.receiver.receiveNext().unwrap();
+    return result.noneOk();
+}

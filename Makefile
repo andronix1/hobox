@@ -1,8 +1,10 @@
-.PHONY: run
+.PHONY: build run
 
-run: .build
-	hoblang build-exe main.hob .build/hobox
-	sudo .build/hobox
+run: build
+	@.build/hobox
+
+build: .build
+	@hoblang build-exe src/main.hob .build/hobox
 
 .build:
 	mkdir .build

@@ -1,0 +1,30 @@
+import result;
+import io;
+import os;
+import std;
+import "../ipc.hob" as ipc;
+
+public fun test() {
+    os.mainWithoutArgs(fun () {
+        var commands = <ipc.Command> [
+            ipc.newCommand(0, fun (sock) {
+                io.out.putString("should be called first\n");
+                return result.noneOk();
+            }),
+            ipc.newCommand(1, fun (sock) {
+                io.out.putString("should be called second\n");
+                return result.noneOk();
+            }),
+        ];
+        var channel = ipc.newChannel(std.slice.new.<ipc.Command>(&commands[0], commands.length)).unwrap();
+        defer channel.free();
+
+        channel.sender.send(0).unwrap();
+        channel.receiver.receiveNext().unwrap();
+
+        channel.sender.send(1).unwrap();
+        channel.receiver.receiveNext().unwrap();
+
+        return 0;
+    });
+}

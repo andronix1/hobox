@@ -1,0 +1,61 @@
+public import "config.hob" as config;
+public use config.Config;
+
+import mem;
+import std;
+import process;
+import result;
+import "configurator.hob" as configurator;
+
+use result.{ Result, NoneResult };
+
+public type Handle = struct {
+    pid: process.Pid
+};
+
+public fun run<T>(config: Config, arg: T, callback: fun (T) -> i32) -> Result.<Handle> {
+    type Call = struct {
+        arg: T,
+        callback: fun (T) -> i32
+    };
+    return configurator.create(config)
+        .mapWith.<Call, Handle>(
+            {
+                arg: arg,
+                callback: callback,
+            },
+            fun (call, cfg) {
+                type ProcessCtx = struct {
+                    call: call.type,
+                    cfg: configurator.Internal
+                };
+                var ctx = <ProcessCtx> {
+                    call: call,
+                    cfg: cfg.internal,
+                };
+
+                final flags = process.cloneFlags()
+                    .newCGroup().newIpc().newPid()
+                    .newNs().newUser()
+                    .newNet().newUts()
+                    .sigChld();
+                var stack: [2048]u8;
+
+                final pid = process.clone.<ProcessCtx>(flags, std.slice.new.<u8>(&stack[0], stack.length), fun (ctx) {
+                    ctx.cfg.setup().unwrap();
+                    return ctx.call.callback(ctx.call.arg);
+                }, mem.allocateWith.<ProcessCtx>(ctx)).unwrap();
+                cfg.external.setup().unwrap();
+
+                return { pid: pid };
+            }
+        );
+}
+
+public fun Handle.wait(self) -> Result.<i32> {
+    return self.pid.wait();
+}
+
+public fun Handle.free(self) {
+    self.wait();
+}
