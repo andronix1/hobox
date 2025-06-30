@@ -43,8 +43,12 @@ public fun run<T>(config: Config, arg: T, callback: fun (T) -> i32) -> Result.<H
 
                 final pid = process.clone.<ProcessCtx>(flags, std.slice.new.<u8>(&stack[0], stack.length), fun (ctx) {
                     ctx.cfg.setup().unwrap();
-                    return ctx.call.callback(ctx.call.arg);
+                    final call = ctx.call;
+                    mem.free(ctx as *void);
+                    return call.callback(call.arg);
                 }, mem.allocateWith.<ProcessCtx>(ctx)).unwrap();
+
+                cfg.external.setPid(pid);
                 cfg.external.setup().unwrap();
 
                 return { pid: pid };

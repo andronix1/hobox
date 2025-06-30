@@ -2,9 +2,11 @@ import std;
 import io;
 import result;
 import env;
+import process;
 import "ipc.hob" as ipc;
 import "config.hob" as config;
 
+use process.Pid;
 use config.Config;
 use result.{ Result, NoneResult };
 
@@ -15,6 +17,8 @@ public type Internal = struct {
 
 public type External = struct {
     sender: ipc.Sender,
+    config: Config,
+    pid: process.Pid,
 };
 
 public type Configurator = struct {
@@ -27,7 +31,7 @@ const CMD_UID_MAPPED: u8 = 0;
 public fun create(config: Config) -> Result.<Configurator> {
     var commands = <ipc.Command> [
         ipc.newCommand(CMD_UID_MAPPED, fun (callback) {
-            return result.noneOk();
+            return env.setUid(0);
         }),
     ];
     return ipc.newChannel(std.slice.new.<ipc.Command>(&commands[0], commands.length))
@@ -36,7 +40,9 @@ public fun create(config: Config) -> Result.<Configurator> {
             fun (config, channel) {
                 return {
                     external: {
-                        sender: channel.sender
+                        sender: channel.sender,
+                        config: config,
+                        pid: undefined,
                     },
                     internal: {
                         receiver: channel.receiver,
@@ -56,7 +62,12 @@ public fun Internal.free(&self) {
     self.config.free();
 }
 
+public fun External.setPid(&self, pid: Pid) {
+    self.pid = pid;
+}
+
 public fun External.setup(&self) -> NoneResult {
+    self.pid.mapUid(0, self.config.user.uid, 1);
     return self.sender.send(CMD_UID_MAPPED);
 }
 
