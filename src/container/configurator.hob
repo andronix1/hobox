@@ -68,7 +68,8 @@ public fun External.setPid(&self, pid: Pid) {
 
 public fun External.setup(&self) -> NoneResult {
     self.pid.mapUid(0, self.config.user.uid, 1);
-    return self.sender.send(CMD_UID_MAPPED);
+    self.sender.send(CMD_UID_MAPPED).unwrap();
+    return result.noneOk();
 }
 
 public fun Internal.setup(&self) -> NoneResult {

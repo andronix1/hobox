@@ -1,0 +1,78 @@
+import result;
+import std;
+import c;
+import "netlink.hob" as netlink;
+
+use result.{ Result, NoneResult };
+
+type Socket = netlink.Socket;
+
+type Header = struct {
+    rtaLength: u16,
+    rtaType: u16,
+};
+
+type LinkName = [16]u8;
+
+type NewLinkInfo = struct {
+    kind: netlink.Attr.<LinkName>
+};
+
+type NewLinkRequestData = struct {
+    data: struct {
+        family: u8,
+        pad: u8,
+        ifiType: u16,
+        index: i32,
+        flags: u32,
+        change: u32,
+    },
+    info: netlink.Attr.<NewLinkInfo>,
+};
+
+type NewLinkRequest = netlink.Request.<NewLinkRequestData>;
+
+fun linkNameFrom(name: string) -> LinkName {
+    var res: LinkName;
+    std.panic.assert(name.length < res.length - 1, "invalid name passed (too big)");
+    for i in std.range(name.length) {
+        res[i] = name.at(i);
+    }
+    res[name.length] = 0;
+    return res;
+}
+
+const AF_UNSPEC: u8 = 0;
+const IFLA_LINKINFO: u16 = 18;
+const IFLA_INFO_KIND: u16 = 1;
+const RTM_NEWLINK: u16 = 16;
+
+fun newLinkRequestNew(kind: string) -> NewLinkRequest {
+    final flags = netlink.headerFlags().ack()
+        .toNew().create().exclusive().back();
+    return netlink.requestNew.<NewLinkRequestData>(RTM_NEWLINK, flags, 0, 0, {
+        data: {
+            family: AF_UNSPEC,
+            pad: 0,
+            ifiType: 0,
+            index: 0,
+            flags: 0,
+            change: 0,
+        },
+        info: netlink.attrNew.<NewLinkInfo>(IFLA_LINKINFO, {
+            kind: netlink.attrNew.<LinkName>(IFLA_INFO_KIND, linkNameFrom(kind))
+        })
+    });
+}
+
+public fun connect() -> Result.<Socket> {
+    return netlink.connect(c.NETLINK_ROUTE).map.<Socket>(fun (sock) {
+        return sock as Socket;
+    });
+}
+
+public fun Socket.newLink(self, kind: string) -> NoneResult {
+    return self.sendRequest.<NewLinkRequestData>(newLinkRequestNew(kind)).map.<std.None>(fun (_) {
+        return std.none();
+    });
+}

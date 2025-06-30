@@ -1,0 +1,110 @@
+import std;
+import c;
+import result;
+import io;
+
+use io.socket;
+use result.Result;
+
+public type Socket = socket.Socket;
+
+type HeaderFlags = u16;
+fun HeaderFlags.or(self, value: u16) -> HeaderFlags { return (self as u16 | value) as HeaderFlags; }
+public fun headerFlags() -> HeaderFlags { return (0 as HeaderFlags).request(); }
+public fun HeaderFlags.request(self) -> HeaderFlags { return self.or(0b1); }
+public fun HeaderFlags.multipart(self) -> HeaderFlags { return self.or(0b10); }
+public fun HeaderFlags.ack(self) -> HeaderFlags { return self.or(0b100); }
+public fun HeaderFlags.echo(self) -> HeaderFlags { return self.or(0b1000); }
+public fun HeaderFlags.toGet(self) -> GetHeaderFlags { return self as GetHeaderFlags; }
+public fun HeaderFlags.toNew(self) -> NewHeaderFlags { return self as NewHeaderFlags; }
+public fun HeaderFlags.toDelete(self) -> DeleteHeaderFlags { return self as DeleteHeaderFlags; }
+public fun HeaderFlags.back(self) -> HeaderFlags { return self; }
+
+type DeleteHeaderFlags = HeaderFlags;
+fun DeleteHeaderFlags.or(self, value: u16) -> DeleteHeaderFlags { return (self as u16 | value) as DeleteHeaderFlags; }
+public fun DeleteHeaderFlags.nonRecursively(self) -> DeleteHeaderFlags { return self.or(0x100); }
+public fun DeleteHeaderFlags.bulk(self) -> DeleteHeaderFlags { return self.or(0x200); }
+
+type NewHeaderFlags = HeaderFlags;
+fun NewHeaderFlags.or(self, value: u16) -> NewHeaderFlags { return (self as u16 | value) as NewHeaderFlags; }
+public fun NewHeaderFlags.replace(self) -> NewHeaderFlags { return self.or(0x100); }
+public fun NewHeaderFlags.exclusive(self) -> NewHeaderFlags { return self.or(0x200); }
+public fun NewHeaderFlags.create(self) -> NewHeaderFlags { return self.or(0x400); }
+public fun NewHeaderFlags.append(self) -> NewHeaderFlags { return self.or(0x800); }
+
+type GetHeaderFlags = HeaderFlags;
+fun GetHeaderFlags.or(self, value: u16) -> GetHeaderFlags { return (self as u16 | value) as GetHeaderFlags; }
+public fun GetHeaderFlags.root(self) -> GetHeaderFlags { return self.or(0x100); }
+public fun GetHeaderFlags.match(self) -> GetHeaderFlags { return self.or(0x200); }
+public fun GetHeaderFlags.atomic(self) -> GetHeaderFlags { return self.or(0x400); }
+
+type Header = struct {
+    length: u32,
+    msgType: u16,
+    flags: HeaderFlags,
+    sequenceNumber: u32,
+    portId: u32,
+};
+
+public type Request<T> = struct {
+    header: Header,
+    body: T,
+};
+
+public fun requestNew<T>(msgType: u16, flags: HeaderFlags, sequenceNumber: u32, portId: u32, body: T) -> Request.<T> {
+    return {
+        header: {
+            length: Request.<T>.sizeof as u32,
+            msgType: msgType,
+            flags: flags,
+            sequenceNumber: sequenceNumber,
+            portId: portId,
+        },
+        body: body,
+    };
+}
+
+type Response = struct {};
+
+public type Attr<T> = struct {
+    length: u16,
+    attrType: u16,
+    value: T,
+};
+
+public fun attrNew<T>(attrType: u16, body: T) -> Attr.<T> {
+    return {
+        length: Attr.<T>.sizeof as u16,
+        attrType: attrType,
+        value: body,
+    };
+}
+
+public fun connect(family: i32) -> Result.<Socket> {
+    return c.err.handleMapped.<Socket>(c.socket(c.AF_NETLINK, c.SOCK_DGRAM, family), fun (sock) {
+        return sock as Socket;
+    });
+}
+
+public fun Socket.sendRequest<T>(self, request: Request.<T>) -> Result.<Response> {
+    var address: c.SockAddrNl = {
+        family: c.FAMILY_AF_NETLINK,
+        padding: 0,
+        pid: 0,
+        groups: 0,
+    };
+    final sendResult = c.err.handleNone(c.sendto(self, &request as *void, request.sizeof, 0, &address as *void,
+        address.sizeof));
+    if !sendResult.isOk {
+        return sendResult.convertErr.<Response>();
+    }
+
+    var buf: [8192]u8;
+    final recvResult = self.readTo(std.slice.new.<u8>(&buf[0], buf.sizeof));
+    if !recvResult.isOk {
+        return recvResult.convertErr.<Response>();
+    }
+    
+    return result.ok.<Response>({});
+}
+
