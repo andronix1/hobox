@@ -1,7 +1,7 @@
 .PHONY: build build-dev run
 
 run: build-dev
-	@.build/hobox
+	@sudo .build/hobox
 
 build-dev: .build
 	@hoblang build-exe src/main.hob .build/hobox
