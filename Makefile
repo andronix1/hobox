@@ -1,7 +1,10 @@
-.PHONY: build run
+.PHONY: build build-dev run
 
-run: build
+run: build-dev
 	@.build/hobox
+
+build-dev: .build
+	@hoblang build-exe src/main.hob .build/hobox
 
 build: .build
 	@hoblang build-exe src/main.hob .build/hobox --release
