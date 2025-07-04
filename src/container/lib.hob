@@ -34,11 +34,11 @@ public fun run<T>(config: Config, arg: T, callback: fun (T) -> i32) -> Result.<H
                     cfg: cfg.internal,
                 };
 
-                final flags = process.cloneFlags()
-                    .newCGroup().newIpc().newPid()
-                    .newNs().newUser()
-                    .newNet().newUts()
-                    .sigChld();
+                use process.CloneFlags as Flags;
+                final flags = Flags.none
+                    .with(Flags.newCGroup).with(Flags.newIpc).with(Flags.newPid)
+                    .with(Flags.newNs).with(Flags.newUser)
+                    .with(Flags.newNet).with(Flags.newUts).with(Flags.sigChld);
                 var stack: [2048]u8;
 
                 final pid = process.clone.<ProcessCtx>(flags, std.slice.new.<u8>(&stack[0], stack.length), fun (ctx) {
